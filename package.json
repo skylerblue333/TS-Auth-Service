@@ -1,0 +1,15 @@
+{
+  "name": "ts-auth-service",
+  "version": "1.0.0",
+  "description": "OAuth2 and JWT authentication microservice.",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "@types/node": "^18.0.0"
+  }
+}
