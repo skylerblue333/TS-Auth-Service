@@ -1,44 +1,30 @@
-<!-- PORTFOLIO PROJECT PROFILE: maintained by the repository owner -->
+# TypeScript Authentication Service
 
-## Project profile and code-audit snapshot
+A small Express service implementing registration, password hashing, login, and JWT verification. It is an authentication component with an in-memory development store—not a complete identity platform or production user database.
 
-**What this is:** **TS-Auth-Service** is a public repository described as: “OAuth2 and JWT authentication microservice. #SkyCoin4444 #AI #Blockchain #DevOps #Innovation” Its dominant language signals are **TypeScript (2 files), JavaScript (1 files)**.
+## Implemented behavior
 
-**Why it has value:** Its value is best understood through the implementation evidence currently present in the repository: **18 tracked files** were observed in the shallow audit, with the source structure and existing documentation providing the project’s specific context. This README does not treat a prototype, experiment, or archive as a production system without supporting evidence.
+The service validates usernames and minimum password length, hashes passwords with bcrypt, rejects duplicate registrations, issues HS256 JWTs with a one-hour expiry, requires an explicit `JWT_SECRET` in production, restricts accepted JWT algorithms, returns only a minimal identity on verification, limits JSON request bodies to 16 KB, and disables the Express fingerprint header.
 
-**Implementation evidence:** 1 test-related file(s) detected; 1 dependency or package manifest(s) detected; 2 build/CI/infrastructure signal(s) detected; and 3 documentation or governance file(s) detected. Test filenames observed include `tests/auth.test.ts`. Dependency or package files include `package.json`. Build, CI, or infrastructure signals include `Dockerfile`, `.github/workflows/ci.yml`.
+```bash
+pnpm install
+JWT_SECRET="replace-with-a-managed-secret" NODE_ENV=production pnpm run build
+JWT_SECRET="replace-with-a-managed-secret" pnpm start
+```
 
-**Current status:** The repository is tracked on the `main` branch. The existing source tree, configuration, tests, workflows, and documentation remain authoritative for supported behavior and maturity. A code audit is not a production-readiness certification, and the presence of a test or workflow file does not establish that all checks pass.
+The API endpoints are `POST /register`, `POST /login`, and `GET /verify` with an `Authorization: Bearer <token>` header.
 
-**Relationship to the wider portfolio:** This repository is one focused component of the broader Skyler Blue Spillers portfolio across AI, software engineering, cloud and DevOps, cybersecurity, blockchain, finance, education, social systems, and creative work. It may provide a service boundary, implementation pattern, experiment, archive, or reusable idea for related repositories. Treat repositories as technical dependencies only where documented interfaces and verified project requirements support that relationship.
+## Validation
 
-**Quality and security note:** Potential secret-like or credential-like patterns were detected in repository text and require manual review; the static scan does not prove that a real secret is exposed. No TODO/FIXME marker was detected in the scanned text files.
+```bash
+pnpm run build
+pnpm test --runInBand
+```
 
----
+The current suite covers registration and login, weak-credential rejection, duplicate registration, minimal verified identity, and invalid-token rejection.
 
-# Ts Auth Service
+## Scope and limitations
 
-![GitHub stars](https://img.shields.io/github/stars/skylerblue333/TS-Auth-Service?style=flat-square)
-![GitHub license](https://img.shields.io/github/license/skylerblue333/TS-Auth-Service?style=flat-square)
+The default store is process-local memory and loses users on restart. This repository does not provide persistent storage, refresh tokens, revocation, multi-factor authentication, account recovery, rate limiting, audit logging, CSRF policy, key rotation, or a deployed identity provider. It must not be used as a production authentication service until those controls and an external persistent store are implemented and reviewed.
 
-## 🌟 Overview
-**TS-Auth-Service** is a professional-grade project within the **SkyCoin4444** ecosystem. It focuses on delivering high-value solutions in the domain of **TypeScript, JavaScript**.
-
-## 🚀 Key Features
-- **Scalable Architecture**: Designed for enterprise-level growth and performance.
-- **Modern Standards**: Implements best practices for clean code and maintainability.
-- **Robust Integration**: Built to work seamlessly within modern cloud-native environments.
-
-## 🛠️ Technology Stack
-- **Primary Domain**: TypeScript, JavaScript
-- **Ecosystem**: SkyCoin4444 Digital Platform
-
-## 📂 Structure
-The project is organized into a modular structure to ensure clarity and ease of development.
-
-## 👨‍💻 Author
-**Skyler Blue Spillers**
-*Professional Chess Player & Software Engineer*
-
----
-*Powered by SkyCoin4444*
+The former “OAuth2,” “professional-grade,” “scalable,” and “cloud-native” language was removed because the current implementation issues local JWTs and does not implement an OAuth2 authorization server.
