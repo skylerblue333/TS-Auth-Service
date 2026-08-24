@@ -11,15 +11,23 @@ type UserStore = { find(username: string): UserRecord | undefined; save(user: Us
 
 export class InMemoryUserStore implements UserStore {
   private readonly users = new Map<string, UserRecord>();
-  find(username: string): UserRecord | undefined { return this.users.get(username); }
-  save(user: UserRecord): void { this.users.set(user.username, user); }
+
+  find(username: string): UserRecord | undefined {
+    return this.users.get(username);
+  }
+
+  save(user: UserRecord): void {
+    this.users.set(user.username, user);
+  }
 }
 
 function configuredSecret(): string {
   const secret = process.env.JWT_SECRET;
-  if (secret) return secret;
-  if (process.env.NODE_ENV === "production") throw new Error("JWT_SECRET is required in production");
-  return "development-only-secret-change-me";
+  if (secret && secret.length >= 32) return secret;
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("JWT_SECRET with at least 32 characters is required in production");
+  }
+  return "development-only-secret-change-me-32chars";
 }
 
 function credentials(body: unknown): { username: string; password: string } | undefined {
@@ -41,6 +49,14 @@ export function createApp(store: UserStore = new InMemoryUserStore(), secret = c
   app.disable("x-powered-by");
   app.use(express.json({ limit: "16kb" }));
 
+  app.get("/healthz", (_request: Request, response: Response) => {
+    response.json({ status: "ok", service: "sky-ts-auth" });
+  });
+
+  app.get("/readyz", (_request: Request, response: Response) => {
+    response.json({ status: "ready" });
+  });
+
   app.post("/register", async (request: Request, response: Response) => {
     const input = credentials(request.body);
     if (!input || !USERNAME_PATTERN.test(input.username) || input.password.length < PASSWORD_MIN_LENGTH) {
@@ -55,9 +71,12 @@ export function createApp(store: UserStore = new InMemoryUserStore(), secret = c
   app.post("/login", async (request: Request, response: Response) => {
     const input = credentials(request.body);
     const user = input ? store.find(input.username) : undefined;
-    const valid = Boolean(user && input && await bcrypt.compare(input.password, user.passwordHash));
+    const valid = Boolean(user && input && (await bcrypt.compare(input.password, user.passwordHash)));
     if (!valid || !user) return response.status(401).json({ error: "invalid credentials" });
-    const token = jwt.sign({ sub: user.username }, secret, { algorithm: "HS256", expiresIn: TOKEN_TTL_SECONDS });
+    const token = jwt.sign({ sub: user.username }, secret, {
+      algorithm: "HS256",
+      expiresIn: TOKEN_TTL_SECONDS,
+    });
     return response.json({ token, expiresIn: TOKEN_TTL_SECONDS });
   });
 
@@ -77,5 +96,8 @@ export function createApp(store: UserStore = new InMemoryUserStore(), secret = c
 }
 
 const app = createApp();
-if (require.main === module) app.listen(3000, () => console.log("Auth service listening on port 3000"));
+if (require.main === module) {
+  const port = Number(process.env.PORT ?? 3000);
+  app.listen(port, () => console.log(`Auth service listening on port ${port}`));
+}
 export default app;
