@@ -21,9 +21,14 @@ export class InMemoryUserStore implements UserStore {
   }
 }
 
-function configuredSecret(): string {
+export function configuredSecret(): string {
   const secret = process.env.JWT_SECRET;
-  if (secret && secret.length >= 32) return secret;
+  if (secret !== undefined) {
+    if (secret.length < 32) {
+      throw new Error("JWT_SECRET must contain at least 32 characters when configured");
+    }
+    return secret;
+  }
   if (process.env.NODE_ENV === "production") {
     throw new Error("JWT_SECRET with at least 32 characters is required in production");
   }
