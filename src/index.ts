@@ -3,11 +3,27 @@ import express, { type Express, type Request, type Response } from "express";
 import jwt, { type JwtPayload } from "jsonwebtoken";
 
 const USERNAME_PATTERN = /^[a-zA-Z0-9_.-]{3,64}$/;
+const ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._:-]{2,127}$/;
+const SOURCE_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]{1,31}$/;
 const PASSWORD_MIN_LENGTH = 12;
 const TOKEN_TTL_SECONDS = 60 * 60;
 
 type UserRecord = { username: string; passwordHash: string };
 type UserStore = { find(username: string): UserRecord | undefined; save(user: UserRecord): void };
+
+export interface IdentityLink {
+  readonly subjectId: string;
+  readonly profileId?: string;
+  readonly source: string;
+}
+
+/**
+ * Integration boundary for SkyIdentity or another trusted identity directory.
+ * Returning a link does not prove or verify a person's real-world identity.
+ */
+export interface IdentityResolver {
+  resolve(username: string): IdentityLink | undefined | Promise<IdentityLink | undefined>;
+}
 
 export class InMemoryUserStore implements UserStore {
   private readonly users = new Map<string, UserRecord>();
@@ -49,7 +65,29 @@ function bearerToken(request: Request): string | undefined {
   return scheme?.toLowerCase() === "bearer" && token && extra.length === 0 ? token : undefined;
 }
 
-export function createApp(store: UserStore = new InMemoryUserStore(), secret = configuredSecret()): Express {
+function tokenSubject(token: string, secret: string): string | undefined {
+  try {
+    const decoded = jwt.verify(token, secret, { algorithms: ["HS256"] }) as JwtPayload;
+    return typeof decoded.sub === "string" && USERNAME_PATTERN.test(decoded.sub) ? decoded.sub : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function normalizeIdentityLink(link: IdentityLink): IdentityLink | undefined {
+  const subjectId = link.subjectId.trim();
+  const profileId = link.profileId?.trim();
+  const source = link.source.trim();
+  if (!ID_PATTERN.test(subjectId) || !SOURCE_PATTERN.test(source)) return undefined;
+  if (profileId !== undefined && !ID_PATTERN.test(profileId)) return undefined;
+  return profileId === undefined ? { subjectId, source } : { subjectId, profileId, source };
+}
+
+export function createApp(
+  store: UserStore = new InMemoryUserStore(),
+  secret = configuredSecret(),
+  identityResolver?: IdentityResolver,
+): Express {
   const app = express();
   app.disable("x-powered-by");
   app.use(express.json({ limit: "16kb" }));
@@ -88,12 +126,62 @@ export function createApp(store: UserStore = new InMemoryUserStore(), secret = c
   app.get("/verify", (request: Request, response: Response) => {
     const token = bearerToken(request);
     if (!token) return response.status(401).json({ error: "bearer token required" });
+    const subject = tokenSubject(token, secret);
+    if (!subject) return response.status(401).json({ error: "invalid token" });
+    return response.json({ valid: true, user: { username: subject } });
+  });
+
+  app.get("/identity-context", async (request: Request, response: Response) => {
+    const token = bearerToken(request);
+    if (!token) return response.status(401).json({ error: "bearer token required" });
+    const username = tokenSubject(token, secret);
+    if (!username) return response.status(401).json({ error: "invalid token" });
+
+    if (!identityResolver) {
+      return response.status(503).json({
+        authenticated: true,
+        user: { username },
+        identityLinked: false,
+        identityVerificationPerformed: false,
+        error: "identity resolver not configured",
+      });
+    }
+
     try {
-      const decoded = jwt.verify(token, secret, { algorithms: ["HS256"] }) as JwtPayload;
-      if (typeof decoded.sub !== "string") return response.status(401).json({ error: "invalid token" });
-      return response.json({ valid: true, user: { username: decoded.sub } });
+      const rawLink = await identityResolver.resolve(username);
+      if (!rawLink) {
+        return response.json({
+          authenticated: true,
+          user: { username },
+          identityLinked: false,
+          identityVerificationPerformed: false,
+        });
+      }
+      const identity = normalizeIdentityLink(rawLink);
+      if (!identity) {
+        return response.status(502).json({
+          authenticated: true,
+          user: { username },
+          identityLinked: false,
+          identityVerificationPerformed: false,
+          error: "identity resolver returned invalid mapping",
+        });
+      }
+      return response.json({
+        authenticated: true,
+        user: { username },
+        identityLinked: true,
+        identityVerificationPerformed: false,
+        identity,
+      });
     } catch {
-      return response.status(401).json({ error: "invalid token" });
+      return response.status(503).json({
+        authenticated: true,
+        user: { username },
+        identityLinked: false,
+        identityVerificationPerformed: false,
+        error: "identity resolver unavailable",
+      });
     }
   });
 
