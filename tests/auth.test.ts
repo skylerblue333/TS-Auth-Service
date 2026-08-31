@@ -88,6 +88,30 @@ describe("SkyIdentity integration contract", () => {
     expect(result.body.identity).toBeUndefined();
   });
 
+  it("returns 502 for non-string required resolver fields", async () => {
+    const resolver = {
+      resolve: () => ({ subjectId: 42, source: "skyidentity" }),
+    } as unknown as IdentityResolver;
+    const app = createApp(new InMemoryUserStore(), "test-secret", resolver);
+    const token = await authenticatedToken(app);
+    const result = await request(app).get("/identity-context").set("Authorization", `Bearer ${token}`);
+
+    expect(result.status).toBe(502);
+    expect(result.body.error).toBe("identity resolver returned invalid mapping");
+  });
+
+  it("returns 502 for null profileId instead of treating it as omitted", async () => {
+    const resolver = {
+      resolve: () => ({ subjectId: "sky:test", profileId: null, source: "skyidentity" }),
+    } as unknown as IdentityResolver;
+    const app = createApp(new InMemoryUserStore(), "test-secret", resolver);
+    const token = await authenticatedToken(app);
+    const result = await request(app).get("/identity-context").set("Authorization", `Bearer ${token}`);
+
+    expect(result.status).toBe(502);
+    expect(result.body.identityLinked).toBe(false);
+  });
+
   it("reports a valid authenticated user with no mapping as unlinked", async () => {
     const resolver: IdentityResolver = { resolve: () => undefined };
     const app = createApp(new InMemoryUserStore(), "test-secret", resolver);
