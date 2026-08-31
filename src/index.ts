@@ -74,10 +74,15 @@ function tokenSubject(token: string, secret: string): string | undefined {
   }
 }
 
-function normalizeIdentityLink(link: IdentityLink): IdentityLink | undefined {
-  const subjectId = link.subjectId.trim();
-  const profileId = link.profileId?.trim();
-  const source = link.source.trim();
+function normalizeIdentityLink(link: unknown): IdentityLink | undefined {
+  if (typeof link !== "object" || link === null) return undefined;
+  const value = link as Record<string, unknown>;
+  if (typeof value.subjectId !== "string" || typeof value.source !== "string") return undefined;
+  if (value.profileId !== undefined && typeof value.profileId !== "string") return undefined;
+
+  const subjectId = value.subjectId.trim();
+  const profileId = typeof value.profileId === "string" ? value.profileId.trim() : undefined;
+  const source = value.source.trim();
   if (!ID_PATTERN.test(subjectId) || !SOURCE_PATTERN.test(source)) return undefined;
   if (profileId !== undefined && !ID_PATTERN.test(profileId)) return undefined;
   return profileId === undefined ? { subjectId, source } : { subjectId, profileId, source };
